@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "twi.h": "c",
+    "io.h": "c"
+  }
+}

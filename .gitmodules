@@ -1,0 +1,3 @@
+[submodule "ref/chips_avr_examples"]
+	path = ref/chips_avr_examples
+	url = https://github.com/CmdrZin/chips_avr_examples.git

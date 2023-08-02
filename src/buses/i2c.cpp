@@ -3,7 +3,7 @@
  *                  INCLUDES
  *****************************************************************************/
 
- // DEFINITIONS
+// DEFINITIONS
 #include "buses/i2c.hpp"
 #include "config.hpp"
 
@@ -140,7 +140,6 @@ I2C::Id I2C::addTask(I2C::Task newTask) {
 
 		INC(index);
 		mTask = buffer[index];
-
 		sendAddr(mTask);
 	}
 
@@ -318,12 +317,10 @@ static void sendAddr(I2C::Task& task) {
 
 	ADD_LOG(ilog::LOG_SEND_ADDR);
 
-	TWI0.MADDR 	= *task.buffs;
-	addrCache		= *task.buffs;
+	TWI0.MADDR = *task.buffs;
 	incrWrite(&task);
 
 	task.action = (I2C::MasterAction)( task.action - I2C::SEND_ADDR );
-	if (mTask.action == I2C::LAST_WRITE) digitalWrite(13, HIGH);
 
 	if (task.action == I2C::LAST_READ) {
 		ADD_LOG(ilog::LOG_NACKING);
@@ -341,18 +338,13 @@ static void sendReadAddr(I2C::Task& task) {
 	}
 
 	ADD_LOG(ilog::LOG_SEND_ADDR);
-
-	TWI0.MADDR	= addrCache | 0x01;
+	TWI0.MADDR = *buffer[index].buffs | 0x01;
 
 	if ( task.nRead == 1 ) {
 		ADD_LOG(ilog::LOG_NACKING);
-
-		TWI0.MCTRLB = TWI_ACKACT_NACK_gc;
 		task.action	= I2C::LAST_READ;
 	} else {
 		ADD_LOG(ilog::LOG_ACKING);
-
-		TWI0.MCTRLB = TWI_ACKACT_ACK_gc;
 		task.action = I2C::READ_DATA;
 	}
 }
@@ -361,16 +353,18 @@ static void sendReadAddr(I2C::Task& task) {
 static void stop(I2C::Task& task) {
 	task.buffs[1] = I2C::OK;
 
-	while (mTask.nWrite == 0) {
+	while (task.nWrite == 0) {
+		INC(index);
+			digitalWrite(13, HIGH);
+
 		// Nothing else to transmit
-		if ( (index + 1) == head ) {
+		if ( index == head ) {
 			ADD_LOG(ilog::LOG_DONE);
-			TWI0.MCTRLB = TWI_MCMD_STOP_gc;
+
+			TWI0.MCTRLB |= TWI_MCMD_STOP_gc;
 			busy = false;
 			return;
 		}
-
-		INC(index);
 	}
 
 	ADD_LOG(ilog::LOG_NEXT_TASK);
@@ -394,7 +388,7 @@ static void writeData(I2C::Task& task) {
 	}
 
 	ADD_LOG(ilog::LOG_WRITE_DATA);
-	TWI0.MDATA	= *task.buffs;
+	TWI0.MDATA = *task.buffs;
 	incrWrite(&task);
 	
 	if ( incrWrite(&task) <= 0 ) {
@@ -423,15 +417,15 @@ static void readData(I2C::Task& task) {
 	}
 
 	ADD_LOG(ilog::LOG_READ_DATA);
+
+	TWI0.MCTRLB |= TWI_ACKACT_ACK_gc;
 	*task.buffs	= TWI0.MDATA;
 	
 	if ( incrRead(&task) == 1 ) {
 		ADD_LOG(ilog::LOG_NACKING);
-
-		TWI0.MCTRLB = TWI_ACKACT_NACK_gc;
 		task.action	= I2C::LAST_READ;
 	} else {
-		TWI0.MCTRLB = TWI_MCMD_RECVTRANS_gc;
+		TWI0.MCTRLB |= TWI_MCMD_RECVTRANS_gc;
 	}
 }
 
@@ -443,12 +437,15 @@ static void readLast(I2C::Task& task) {
 
 	ADD_LOG(ilog::LOG_READ_LAST);
 
+	TWI0.MCTRLB |= TWI_ACKACT_NACK_gc;
 	*task.buffs = TWI0.MDATA;
+
 	stop(task);
 }
 
 
-ISR(TWI0_TWIM_vect) {	
+ISR(TWI0_TWIM_vect) {
+	
 	switch (mTask.action) {
 	case I2C::SEND_ADDR:
 	case I2C::SEND_ADDR_READ:

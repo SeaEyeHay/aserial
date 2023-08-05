@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <ArduinoLog.h>
 
 #include "buses/i2c.hpp"
 
@@ -14,13 +13,11 @@ void setup() {
     .buffs  = buff,
     .nWrite = 2,
     .nRead  = 1,
-    .action = I2C::SEND_ADDR_WRITE_REG,
+    .action = I2C::SEND_ADDR,
   };
 
 
   delay(100);
-
-
   I2C::addTask(task);
 }
 

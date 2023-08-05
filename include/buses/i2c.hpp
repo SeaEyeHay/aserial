@@ -23,28 +23,25 @@
  *****************************************************************************/
 
 namespace I2C {
-  enum Rate             { SLOW=100000,  NORMAL=400000,  FAST=1000000  };
-  enum Result: uint8_t  { BUSY=0,       OK,             ERROR         };
+  enum Rate             { SLOW,   NORMAL, FAST  };
+  enum Result: uint8_t  { BUSY=0, OK,     ERROR };
 
-// General TWI Master status codes
-enum MasterAction : uint8_t {
-	WRITE_DATA	= 0x00,
-	READ_DATA		= 0x01,
-	LAST_WRITE	= 0x02,
-	LAST_READ		= 0x03,
+  // General TWI Master status codes
+  enum MasterAction : uint8_t {
+  	WRITE_DATA	= 0x00,
+  	READ_DATA		= 0x01,
+  	LAST_WRITE	= 0x02,
+  	LAST_READ		= 0x03,
 
-	SEND_ADDR           = 0x04,
-	SEND_ADDR_READ      = 0x05,
-  SEND_ADDR_WRITE_REG = 0x06,
-  SEND_ADDR_READ_ONCE = 0x07,
-  SEND_ADDR_READ_REG,
+  	SEND_ADDR       = 0x04,
+  	SEND_ADDR_READ  = 0x05,
 
-  AWAIT_READ,
-  AWAIT_LAST_READ,
+    AWAIT_READ,
+    AWAIT_LAST_READ,
 
-	STOP,
-	IDLE,
-};
+  	STOP,
+  	IDLE,
+  };
 
   struct Task {
     uint8_t* buffs;

@@ -20,11 +20,13 @@
  *                  LOCAL FUNCTIONS
  *****************************************************************************/
 
+static void masterHandler(void);
+
 static void sendAddr(I2C::Task&);
-static void sendReadAddr(I2C::Task&);
+static void sendReadAddr(I2C::Task&, uint8_t);
 
 static void writeData(I2C::Task&);
-static void writeReg(I2C::Task&);
+static void writeLast(I2C::Task&);
 static void readData(I2C::Task&);
 static void readLast(I2C::Task&);
 
@@ -115,14 +117,29 @@ void I2C::initBus(I2C::Rate baudRate) {
 
 
 void I2C::setBusRate(I2C::Rate speed) {
+	uint32_t bitrate;
 	uint16_t rise;
+
+	// The values are taken from the wire library
 	switch (speed) {
-		case I2C::SLOW:   rise = 1000;  break;
-		case I2C::NORMAL: rise = 300;   break;
-		case I2C::FAST:   rise = 120;   break;
+		case I2C::SLOW:
+			bitrate	= 100000;
+			rise 		= 1000;
+			break;
+
+		case I2C::NORMAL:
+			bitrate = 400000;
+			rise 		= 300;
+			break;
+
+		case I2C::FAST:
+			bitrate	= 1000000;
+			rise 		= 120;
+			break;
 	}
 
-	auto baud = (F_CPU_CORRECTED / speed - F_CPU_CORRECTED / 1000000 * rise / 1000 - 10) / 2;
+	// Equation taken from the wire library
+	auto baud = (F_CPU_CORRECTED / bitrate - F_CPU_CORRECTED / 1000000 * rise / 1000 - 10) / 2;
 	TWI0.MBAUD = (uint8_t)baud;
 }
 
@@ -136,11 +153,11 @@ I2C::Id I2C::addTask(I2C::Task newTask) {
 	INC(head);
 
 	if ( !busy ) {
-		busy = true;
-
 		INC(index);
 		mTask = buffer[index];
-		sendAddr(mTask);
+		
+		busy = true;
+		masterHandler();
 	}
 
 	return id;
@@ -320,25 +337,23 @@ static void sendAddr(I2C::Task& task) {
 	TWI0.MADDR = *task.buffs;
 	incrWrite(&task);
 
-	task.action = (I2C::MasterAction)( task.action - I2C::SEND_ADDR );
-
-	if (task.action == I2C::LAST_READ) {
+	if ( task.nWrite == 1 ) {
 		ADD_LOG(ilog::LOG_NACKING);
-		TWI0.MCTRLB = TWI_ACKACT_NACK_gc;
+		task.action	= I2C::LAST_WRITE;
 	} else {
 		ADD_LOG(ilog::LOG_ACKING);
-		TWI0.MCTRLB = TWI_ACKACT_ACK_gc;
+		task.action = I2C::WRITE_DATA;
 	}
 }
 
-static void sendReadAddr(I2C::Task& task) {
+static void sendReadAddr(I2C::Task& task, uint8_t addr) {
 	if ( TWI0.MSTATUS & (TWI_ARBLOST_bm | TWI_BUSERR_bm) ) {
 		ADD_LOG(ilog::LOG_ERROR_SEND_ADDR);
 		return;
 	}
 
 	ADD_LOG(ilog::LOG_SEND_ADDR);
-	TWI0.MADDR = *buffer[index].buffs | 0x01;
+	TWI0.MADDR = addr | 0x01;
 
 	if ( task.nRead == 1 ) {
 		ADD_LOG(ilog::LOG_NACKING);
@@ -355,7 +370,6 @@ static void stop(I2C::Task& task) {
 
 	while (task.nWrite == 0) {
 		INC(index);
-			digitalWrite(13, HIGH);
 
 		// Nothing else to transmit
 		if ( index == head ) {
@@ -380,6 +394,10 @@ static void reset(I2C::Task& task) {
 	sendAddr(mTask);
 }
 
+static void handleError(uint8_t status) {
+	
+}
+
 
 static void writeData(I2C::Task& task) {
 	if ( TWI0.MSTATUS & (TWI_ARBLOST_bm | TWI_BUSERR_bm | TWI_RXACK_bm) ) {
@@ -389,15 +407,14 @@ static void writeData(I2C::Task& task) {
 
 	ADD_LOG(ilog::LOG_WRITE_DATA);
 	TWI0.MDATA = *task.buffs;
-	incrWrite(&task);
 	
-	if ( incrWrite(&task) <= 0 ) {
+	if ( incrWrite(&task) == 1 ) {
 		ADD_LOG(ilog::LOG_DONE_WRITE);
-		task.action = (task.nRead <= 0) ? I2C::STOP : I2C::SEND_ADDR_READ_REG;
+		task.action = I2C::LAST_WRITE;
 	}
 }
 
-static void writeReg(I2C::Task& task) {
+static void writeLast(I2C::Task& task) {
 	if ( TWI0.MSTATUS & (TWI_ARBLOST_bm | TWI_BUSERR_bm | TWI_RXACK_bm) ) {
 		ADD_LOG(ilog::LOG_ERROR_WRITE_REG);
 		return;
@@ -407,7 +424,7 @@ static void writeReg(I2C::Task& task) {
 	TWI0.MDATA = *task.buffs;
 	incrWrite(&task);
 
-	task.action	= I2C::SEND_ADDR_READ_REG;
+	task.action = (task.nRead == 0) ? I2C::STOP : I2C::SEND_ADDR_READ;
 }
 
 static void readData(I2C::Task& task) {
@@ -440,61 +457,61 @@ static void readLast(I2C::Task& task) {
 	TWI0.MCTRLB |= TWI_ACKACT_NACK_gc;
 	*task.buffs = TWI0.MDATA;
 
+	incrRead(&task);
 	stop(task);
 }
 
 
-ISR(TWI0_TWIM_vect) {
-	
+static void masterHandler(void) {
 	switch (mTask.action) {
-	case I2C::SEND_ADDR:
-	case I2C::SEND_ADDR_READ:
-	case I2C::SEND_ADDR_WRITE_REG:
-	case I2C::SEND_ADDR_READ_ONCE:
-		sendAddr(mTask);								// This never happen
-		break;
+		case I2C::SEND_ADDR:
+			sendAddr(mTask);
+			break;
 
-	case I2C::SEND_ADDR_READ_REG:
-		sendReadAddr(mTask);
-		break;
+		case I2C::SEND_ADDR_READ:
+			sendReadAddr(mTask, *buffer[index].buffs);
+			break;
 
-	case I2C::WRITE_DATA:
-		writeData(mTask);
-		break;
+		case I2C::WRITE_DATA:
+			writeData(mTask);
+			break;
 
-	case I2C::LAST_WRITE:
-		writeReg(mTask);
-		break;
+		case I2C::LAST_WRITE:
+			writeLast(mTask);
+			break;
 
-	case I2C::READ_DATA:
-		readData(mTask);
-		break;
+		case I2C::READ_DATA:
+			readData(mTask);
+			break;
 
-	case I2C::LAST_READ:
-		readLast(mTask);
-		break;
+		case I2C::LAST_READ:
+			readLast(mTask);
+			break;
 
-	case I2C::STOP:
-		stop(mTask);
-		break;
+		case I2C::STOP:
+			stop(mTask);
+			break;
 
 
-	case I2C::AWAIT_READ:
-		ADD_LOG(ilog::LOG_AWAITING_DATA);
-		mTask.action = I2C::READ_DATA;
-		break;
+		case I2C::AWAIT_READ:
+			ADD_LOG(ilog::LOG_AWAITING_DATA);
+			mTask.action = I2C::READ_DATA;
+			break;
 
-	case I2C::AWAIT_LAST_READ:
-		ADD_LOG(ilog::LOG_AWAITING_DATA);
-		mTask.action = I2C::LAST_READ;
-		break;
+		case I2C::AWAIT_LAST_READ:
+			ADD_LOG(ilog::LOG_AWAITING_DATA);
+			mTask.action = I2C::LAST_READ;
+			break;
 	}
+}
+
+ISR(TWI0_TWIM_vect) {
+	masterHandler();
 }
 
 
 ISR(TWI0_TWIS_vect) {
 
 }
-
 
 /*****************************************************************************/

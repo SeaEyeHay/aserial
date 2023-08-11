@@ -1,6 +1,7 @@
 {
   "files.associations": {
     "twi.h": "c",
-    "io.h": "c"
+    "io.h": "c",
+    "twimaster.h": "c"
   }
 }

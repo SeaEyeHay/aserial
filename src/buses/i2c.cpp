@@ -505,6 +505,7 @@ static void masterHandler(void) {
 	}
 }
 
+
 ISR(TWI0_TWIM_vect) {
 	masterHandler();
 }

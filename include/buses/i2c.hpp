@@ -23,8 +23,8 @@
  *****************************************************************************/
 
 namespace I2C {
-  enum Rate             { SLOW,   NORMAL, FAST  };
-  enum Result: uint8_t  { BUSY=0, OK,     ERROR };
+  enum Rate             { SLOW, NORMAL, FAST        };
+  enum Result: uint8_t  { IDLE, BUSY,   OK,  ERROR  };
 
   // General TWI Master status codes
   enum MasterAction : uint8_t {
@@ -40,7 +40,6 @@ namespace I2C {
     AWAIT_LAST_READ,
 
   	STOP,
-  	IDLE,
   };
 
   struct Task {

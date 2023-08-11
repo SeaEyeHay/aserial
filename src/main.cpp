@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "buses/i2c.hpp"
+#include "i2c.hpp"
 
 
 void setup() {
